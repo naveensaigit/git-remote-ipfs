@@ -1,4 +1,4 @@
-from git_remote_dropbox.constants import DEVNULL
+from git_remote_ipfs.constants import DEVNULL
 
 import subprocess
 import zlib

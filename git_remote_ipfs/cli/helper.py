@@ -1,8 +1,8 @@
-from git_remote_dropbox.util import (
+from git_remote_ipfs.util import (
     Level,
     stdout_to_binary,
 )
-from git_remote_dropbox.cli.common import (
+from git_remote_ipfs.cli.common import (
     error,
     get_helper,
 )
@@ -12,7 +12,7 @@ import sys
 
 def main():
     """
-    Main entry point for git-remote-dropbox Git remote helper.
+    Main entry point for git-remote-ipfs Git remote helper.
     """
     # configure system
     stdout_to_binary()

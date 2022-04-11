@@ -110,8 +110,9 @@ class Config(object):
     """
 
     def __init__(self, filename):
-        with open(filename) as f:
-            self._settings = json.load(f)
+        pass
+        # with open(filename) as f:
+        #     self._settings = json.load(f)
 
     def __getitem__(self, key):
         """
@@ -119,4 +120,5 @@ class Config(object):
 
         Raises KeyError if the config file is missing the key.
         """
-        return self._settings[key]
+        pass
+        # return self._settings[key]

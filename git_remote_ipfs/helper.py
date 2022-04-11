@@ -1,9 +1,9 @@
-from git_remote_dropbox.constants import (
+from git_remote_ipfs.constants import (
     PROCESSES,
     CHUNK_SIZE,
     MAX_RETRIES,
 )
-from git_remote_dropbox.util import (
+from git_remote_ipfs.util import (
     readline,
     Level,
     stdout,
@@ -11,9 +11,9 @@ from git_remote_dropbox.util import (
     Binder,
     Poison,
 )
-import git_remote_dropbox.git as git
+import git_remote_ipfs.git as git
 
-import dropbox
+from git_remote_ipfs.apihandler import *
 
 import multiprocessing
 
@@ -29,6 +29,7 @@ except ImportError:
 import multiprocessing.dummy
 import multiprocessing.pool
 import posixpath
+import os
 
 
 class Helper(object):
@@ -36,14 +37,14 @@ class Helper(object):
     A git remote helper to communicate with Dropbox.
     """
 
-    def __init__(self, token, path, processes=PROCESSES):
-        self._token = token
-        self._path = path
+    def __init__(self, path, processes=PROCESSES):
+        self._path = ".git"
         self._processes = processes
         self._verbosity = Level.INFO  # default verbosity
         self._refs = {}  # map from remote ref name => (rev number, sha)
         self._pushed = {}  # map from remote ref name => sha
         self._first_push = False
+        self._connection = APIHandler()
 
     @property
     def verbosity(self):
@@ -81,14 +82,6 @@ class Helper(object):
         """
         self._trace(message, Level.ERROR)
         exit(1)
-
-    def _connection(self):
-        """
-        Return a Dropbox connection object.
-        """
-        # we use fresh connection objects for every use so that multiple
-        # threads can have connections simultaneously
-        return dropbox.Dropbox(self._token)
 
     def run(self):
         """
@@ -184,12 +177,7 @@ class Helper(object):
         if head and ref == head[1]:
             self._write("error %s refusing to delete the current branch: %s" % (ref, head))
             return
-        try:
-            self._connection().files_delete(self._ref_path(ref))
-        except dropbox.exceptions.ApiError as e:
-            if not isinstance(e.error, dropbox.files.DeleteError):
-                raise
-            # someone else might have deleted it first, that's fine
+        self._connection.files_delete(self._ref_path(ref))
         self._refs.pop(ref, None)  # discard
         self._pushed.pop(ref, None)  # discard
         self._write("ok %s" % ref)
@@ -262,8 +250,8 @@ class Helper(object):
         Return a tuple (revision, content).
         """
         self._trace("fetching: %s" % path)
-        meta, resp = self._connection().files_download(path)
-        return (meta.rev, resp.content)
+        meta, resp = self._connection.files_download(path)
+        return (meta, resp)
 
     def _get_files(self, paths):
         """
@@ -276,63 +264,11 @@ class Helper(object):
         """
         Upload an object to the remote.
         """
-        data = git.encode_object(sha)
         path = self._object_path(sha)
         self._trace("writing: %s" % path)
         retries = 0
-        mode = dropbox.files.WriteMode("overwrite")
 
-        if len(data) <= CHUNK_SIZE:
-            while True:
-                try:
-                    self._connection().files_upload(data, path, mode, mute=True)
-                except dropbox.exceptions.InternalServerError:
-                    self._trace("internal server error writing %s, retrying" % sha)
-                    if retries < MAX_RETRIES:
-                        retries += 1
-                    else:
-                        raise
-                else:
-                    break
-        else:
-            conn = self._connection()
-            cursor = dropbox.files.UploadSessionCursor(offset=0)
-            done_uploading = False
-
-            while not done_uploading:
-                try:
-                    end = cursor.offset + CHUNK_SIZE
-                    chunk = data[(cursor.offset) : end]
-
-                    if cursor.offset == 0:
-                        # upload first chunk
-                        result = conn.files_upload_session_start(chunk)
-                        cursor.session_id = result.session_id
-                    elif end < len(data):
-                        # upload intermediate chunks
-                        conn.files_upload_session_append_v2(chunk, cursor)
-                    else:
-                        # upload the last chunk
-                        commit_info = dropbox.files.CommitInfo(path, mode, mute=True)
-                        conn.files_upload_session_finish(chunk, cursor, commit_info)
-                        done_uploading = True
-
-                    # advance cursor to next chunk
-                    cursor.offset = end
-
-                except dropbox.files.UploadSessionOffsetError as offset_error:
-                    self._trace("offset error writing %s, retrying" % sha)
-                    cursor.offset = offset_error.correct_offset
-                    if retries < MAX_RETRIES:
-                        retries += 1
-                    else:
-                        raise
-                except dropbox.exceptions.InternalServerError:
-                    self._trace("internal server error writing %s, retrying" % sha)
-                    if retries < MAX_RETRIES:
-                        retries += 1
-                    else:
-                        raise
+        self._connection.files_upload(path)
 
     def _download(self, input_queue, output_queue):
         """
@@ -344,7 +280,9 @@ class Helper(object):
                 if isinstance(obj, Poison):
                     return
                 _, data = self._get_file(self._object_path(obj))
-                computed_sha = git.decode_object(data)
+                stderr(data)
+                stderr("\n")
+                computed_sha = git.decode_object(data.encode("utf-8"))
                 if computed_sha != obj:
                     output_queue.put(Poison("hash mismatch %s != %s" % (computed_sha, obj)))
                 output_queue.put(obj)
@@ -429,31 +367,15 @@ class Helper(object):
         error.
         """
         path = self._ref_path(dst)
-        if force:
-            # overwrite regardless of what is there before
-            mode = dropbox.files.WriteMode("overwrite")
-        else:
-            info = self._refs.get(dst, None)
-            if info:
-                rev, sha = info
-                if not git.object_exists(sha):
-                    return "fetch first"
-                is_fast_forward = git.is_ancestor(sha, new_sha)
-                if not is_fast_forward and not force:
-                    return "non-fast forward"
-                # perform an atomic compare-and-swap
-                mode = dropbox.files.WriteMode.update(rev)
-            else:
-                # perform an atomic add, which fails if a concurrent writer
-                # writes before this does
-                mode = dropbox.files.WriteMode("add")
-        self._trace("writing ref %s with mode %s" % (dst, mode))
+        info = self._refs.get(dst, None)
+
+        self._trace("writing ref %s" % (dst))
         data = ("%s\n" % new_sha).encode("utf8")
         try:
-            self._connection().files_upload(data, path, mode, mute=True)
-        except dropbox.exceptions.ApiError as e:
-            if not isinstance(e.error, dropbox.files.UploadError):
-                raise
+            self._connection.files_upload(path)
+            self._connection.save_meta()
+        except Exception as e:
+            print(e)
             return "fetch first"
         else:
             return None
@@ -464,32 +386,16 @@ class Helper(object):
 
         Return a list of tuples of (sha, name).
         """
-        try:
-            loc = posixpath.join(self._path, "refs")
-            res = self._connection().files_list_folder(loc, recursive=True)
-            files = res.entries
-            while res.has_more:
-                res = self._connection().files_list_folder_continue(res.cursor)
-                files.extend(res.entries)
-        except dropbox.exceptions.ApiError as e:
-            if not isinstance(e.error, dropbox.files.ListFolderError):
-                raise
-            if not for_push:
-                # if we're pushing, it's okay if nothing exists beforehand,
-                # but it's good to notify the user just in case
-                self._trace("repository is empty", Level.INFO)
-            else:
-                self._first_push = True
-            return []
-        files = [i for i in files if isinstance(i, dropbox.files.FileMetadata)]
-        paths = [i.path_lower for i in files]
+        loc = posixpath.join(self._path, "refs")
+        paths  = self._connection.files_list_folder(loc)
+        paths = [i.lower() for i in paths]
         if not paths:
             return []
         revs, data = zip(*self._get_files(paths))
         refs = []
         for path, rev, data in zip(paths, revs, data):
             name = self._ref_name_from_path(path)
-            sha = data.decode("utf8").strip()
+            sha = data.strip()
             self._refs[name] = (rev, sha)
             refs.append((sha, name))
         return refs
@@ -504,20 +410,13 @@ class Helper(object):
         Return a boolean indicating whether the write was successful.
         """
         path = posixpath.join(self._path, path)
-        if rev:
-            # atomic compare-and-swap
-            mode = dropbox.files.WriteMode.update(rev)
-        else:
-            # atomic add
-            mode = dropbox.files.WriteMode("add")
         data = ("ref: %s\n" % ref).encode("utf8")
-        self._trace("writing symbolic ref %s with mode %s" % (path, mode))
+        self._trace("writing symbolic ref %s" % (path))
         try:
-            self._connection().files_upload(data, path, mode, mute=True)
+            self._connection.files_upload(path)
+            self._connection.save_meta()
             return True
-        except dropbox.exceptions.ApiError as e:
-            if not isinstance(e.error, dropbox.files.UploadError):
-                raise
+        except Exception as e:
             return False
         return True
 
@@ -530,12 +429,10 @@ class Helper(object):
         path = posixpath.join(self._path, path)
         self._trace("fetching symbolic ref: %s" % path)
         try:
-            meta, resp = self._connection().files_download(path)
-            ref = resp.content.decode("utf8")
+            meta, resp = self._connection.files_download(path)
+            ref = resp.decode("utf8")
             ref = ref[len("ref: ") :].rstrip()
-            rev = meta.rev
+            rev = meta
             return (rev, ref)
-        except dropbox.exceptions.ApiError as e:
-            if not isinstance(e.error, dropbox.files.DownloadError):
-                raise
+        except Exception as e:
             return None

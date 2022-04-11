@@ -1,6 +1,6 @@
-import git_remote_dropbox
-import git_remote_dropbox.git as git
-from git_remote_dropbox.cli.common import (
+import git_remote_ipfs
+import git_remote_ipfs.git as git
+from git_remote_ipfs.cli.common import (
     error,
     get_helper,
 )
@@ -11,7 +11,7 @@ import subprocess
 
 def main():
     """
-    Main entry point for git-dropbox-manage program.
+    Main entry point for git-ipfs-manage program.
     """
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
@@ -22,7 +22,7 @@ def main():
     parser_set_head.add_argument("remote", type=str, help="name of the remote")
     parser_set_head.add_argument("branch", type=str, help="name of the branch on the remote")
     parser_set_head = subparsers.add_parser(
-        "version", help="print the version of git-remote-dropbox"
+        "version", help="print the version of git-remote-ipfs"
     )
 
     args = parser.parse_args()
@@ -37,7 +37,7 @@ def set_head(remote, branch):
     """
     Set the default branch on the remote to point to branch.
 
-    While almost all git-remote-dropbox functionality is fully safe under
+    While almost all git-remote-ipfs functionality is fully safe under
     concurrent operation, this particular functionality is not safe under a
     particular kind of concurrent modification. In particular, if set-head is
     called with a branch that is concurrently deleted, then the operation fails
@@ -80,4 +80,4 @@ def set_head(remote, branch):
 
 
 def version():
-    print("git-remote-dropbox %s" % git_remote_dropbox.__version__)
+    print("git-remote-ipfs %s" % git_remote_ipfs.__version__)

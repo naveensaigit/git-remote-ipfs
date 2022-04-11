@@ -25,12 +25,12 @@ def find_version(*file_paths):
 
 
 setup(
-    name="git-remote-dropbox",
-    version=find_version("git_remote_dropbox", "__init__.py"),
-    description="A transparent bidirectional bridge between Git and Dropbox",
+    name="git-remote-ipfs",
+    version=find_version("git_remote_ipfs", "__init__.py"),
+    description="A transparent bidirectional bridge between Git and IPFS",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/anishathalye/git-remote-dropbox",
+    url="https://github.com/naveensaigit/git-remote-ipfs",
     author="Anish Athalye",
     author_email="me@anishathalye.com",
     license="MIT",
@@ -48,15 +48,15 @@ setup(
         "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
     ],
-    keywords="git dropbox",
+    keywords="git ipfs",
     packages=find_packages(),
-    install_requires=[
-        "dropbox>=11,<12",
-    ],
+    # install_requires=[
+    #     "dropbox>=11,<12",
+    # ],
     entry_points={
         "console_scripts": [
-            "git-remote-dropbox=git_remote_dropbox.cli.helper:main",
-            "git-dropbox-manage=git_remote_dropbox.cli.manage:main",
+            "git-remote-ipfs=git_remote_ipfs.cli.helper:main",
+            "git-ipfs-manage=git_remote_ipfs.cli.manage:main",
         ],
     },
 )

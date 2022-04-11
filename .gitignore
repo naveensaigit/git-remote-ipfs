@@ -2,3 +2,5 @@ dist/
 build/
 *.pyc
 *.egg-info
+node_modules/
+ipfs-trial/
