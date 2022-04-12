@@ -243,22 +243,39 @@ class Helper(object):
         suffix = name[2:]
         return posixpath.join(self._path, "objects", prefix, suffix)
 
-    def _get_file(self, path):
+    def _get_file_obj(self, path):
         """
         Return the revision number and content of a given file on the remote.
 
         Return a tuple (revision, content).
         """
         self._trace("fetching: %s" % path)
-        meta, resp = self._connection.files_download(path)
+        meta, resp = self._connection.files_download_obj(path)
         return (meta, resp)
 
-    def _get_files(self, paths):
+    def _get_file_ref(self, path):
+        """
+        Return the revision number and content of a given file on the remote.
+
+        Return a tuple (revision, content).
+        """
+        self._trace("fetching: %s" % path)
+        meta, resp = self._connection.files_download_ref(path)
+        return (meta, resp)
+
+    def _get_files_obj(self, paths):
         """
         Return a list of (revision number, content) for a given list of files.
         """
         pool = multiprocessing.dummy.Pool(self._processes)
-        return pool.map(self._get_file, paths)
+        return pool.map(self._get_file_obj, paths)
+
+    def _get_files_ref(self, paths):
+        """
+        Return a list of (revision number, content) for a given list of files.
+        """
+        pool = multiprocessing.dummy.Pool(self._processes)
+        return pool.map(self._get_file_ref, paths)
 
     def _put_object(self, sha):
         """
@@ -279,10 +296,8 @@ class Helper(object):
                 obj = input_queue.get()
                 if isinstance(obj, Poison):
                     return
-                _, data = self._get_file(self._object_path(obj))
-                stderr(data)
-                stderr("\n")
-                computed_sha = git.decode_object(data.encode("utf-8"))
+                _, data = self._get_file_obj(self._object_path(obj))
+                computed_sha = git.decode_object(data)
                 if computed_sha != obj:
                     output_queue.put(Poison("hash mismatch %s != %s" % (computed_sha, obj)))
                 output_queue.put(obj)
@@ -391,7 +406,7 @@ class Helper(object):
         paths = [i.lower() for i in paths]
         if not paths:
             return []
-        revs, data = zip(*self._get_files(paths))
+        revs, data = zip(*self._get_files_ref(paths))
         refs = []
         for path, rev, data in zip(paths, revs, data):
             name = self._ref_name_from_path(path)
@@ -429,7 +444,7 @@ class Helper(object):
         path = posixpath.join(self._path, path)
         self._trace("fetching symbolic ref: %s" % path)
         try:
-            meta, resp = self._connection.files_download(path)
+            meta, resp = self._connection.files_download_ref(path)
             ref = resp.decode("utf8")
             ref = ref[len("ref: ") :].rstrip()
             rev = meta

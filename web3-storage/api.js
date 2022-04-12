@@ -36,7 +36,7 @@ async function uploadFiles(path) {
     await getLinks(folder_cid);
 }
 
-async function downloadFile(cid, path) {
+async function downloadFile(cid) {
     const res = await client.get(cid);
 
     if(res == undefined)
@@ -44,12 +44,12 @@ async function downloadFile(cid, path) {
     const files = await res.files();
     for (const file of files) {
         console.log(await file.text())
-        const arrBuf = await file.arrayBuffer();
-        const buf = toBuffer(arrBuf);
-        fs.writeFile(path, buf, err => {
-            if(err)
-                throw err;
-        });
+        // const arrBuf = await file.arrayBuffer();
+        // const buf = toBuffer(arrBuf);
+        // fs.writeFile(path, buf, err => {
+        //     if(err)
+        //         throw err;
+        // });
     }
 }
 
@@ -62,7 +62,7 @@ async function downloadFile(cid, path) {
 if(args[0] == 'upload')
   await uploadFiles(args.slice(1));
 else if(args[0] == 'download')
-  await downloadFile(args[1], args[2]);
+  await downloadFile(args[1]);
 else {
     console.error("Unknown argument passed: " + args[0]);
     process.exit(1);
