@@ -9,20 +9,18 @@ import requests
 
 class APIHandler:
   def __init__(self):
-    self.metapath = os.path.join(os.getcwd(), ".dgit")
-    self.metadata = json.load(open(self.metapath))
+    self.metapath = ""
+    self.metadata = {}
 
   def files_download_obj(self, path):
-    filename = path.split("/")[-1]
     cid = GetCID(self.metadata, path)
-    resp = requests.get("https://nftstorage.link/ipfs/" + cid)
+    resp = requests.get("https://cloudflare-ipfs.com/ipfs/" + cid)
     out = resp.content
     return 0, out
 
   def files_download_ref(self, path):
-    filename = path.split("/")[-1]
     cid = GetCID(self.metadata, path)
-    out = requests.get("https://nftstorage.link/ipfs/" + cid).content.decode("utf-8")
+    out = requests.get("https://cloudflare-ipfs.com/ipfs/" + cid).content.decode("utf-8")
     return 0, out
   
   def file_upload(self, path):
@@ -40,8 +38,14 @@ class APIHandler:
     UpdateCID(self.metadata, path, cid)
 
   def save_meta(self):
-    json.dump(self.metadata, open(self.metapath, "w"), indent=4, sort_keys=True)
-    self.file_upload(self.metapath)
+    # json.dump(self.metadata, open(self.metapath, "w"), indent=4, sort_keys=True)
+    f_data = {'file': json.dumps(self.metadata).encode("utf-8")}
+    headers = {"Authorization": f"Bearer {os.environ.get('WEB3_API_TOKEN')}"}
+    resp = requests.post("https://api.web3.storage/upload", headers=headers, files=f_data)
+    stderr(f"Response: {resp.content.decode('utf-8')}")
+    cid = json.loads(resp.content.decode('utf-8'))['cid']
+    stderr(f"File CID: {cid}")
+    return cid
 
   def files_delete(self, path):
     path = path.strip("/").split("/")

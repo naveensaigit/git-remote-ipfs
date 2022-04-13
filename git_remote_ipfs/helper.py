@@ -30,7 +30,8 @@ import multiprocessing.dummy
 import multiprocessing.pool
 import posixpath
 import os
-
+import json
+import requests
 
 class Helper(object):
     """
@@ -38,6 +39,7 @@ class Helper(object):
     """
 
     def __init__(self, path, processes=PROCESSES):
+        self._remote_path = path[7:] # is something like ipfs://D://repos//repo_name
         self._path = ".git"
         self._processes = processes
         self._verbosity = Level.INFO  # default verbosity
@@ -45,6 +47,15 @@ class Helper(object):
         self._pushed = {}  # map from remote ref name => sha
         self._first_push = False
         self._connection = APIHandler()
+        self._init_cid = open(self._remote_path, "r").read()
+        if self._init_cid == "":
+          self._init_cid = "bafkreifr274cuc4orxkdynfxh7spmudcd5omhzrqax4gc457rzveaweqkm"
+        resp = requests.get("https://cloudflare-ipfs.com/ipfs/"+self._init_cid).content.decode("utf-8")
+        stderr("init_cid: " + self._init_cid + "\n")
+        stderr("Resp: " + resp + "\n")
+        self._connection.metadata = json.loads(resp)
+        self._connection.metapath = self._remote_path
+
 
     @property
     def verbosity(self):
@@ -121,12 +132,30 @@ class Helper(object):
         """
         Handle the list command.
         """
+        # stderr("Updating metadata before fetching...\n")
+    
+        # # before fetching first update the .dgit from nameservice.
+        # cid = open(self._remote_path, "r").read()
+        
+        # # now download using cid.
+        # content = requests.get("https://cloudflare-ipfs.com/ipfs/"+cid).content.decode("utf-8")
+
+        # # update .dgit
+        # f = open(".dgit", "w")
+        # f.write(content)
+        # f.close()
+
+        # stderr(content)
+        # stderr("Metadata updated, now fetching...\n")
+
         for_push = "for-push" in line
         refs = self.get_refs(for_push=for_push)
+        stderr(f"{refs}")
         for sha, ref in refs:
             self._write("%s %s" % (sha, ref))
         if not for_push:
             head = self.read_symbolic_ref("HEAD")
+            head = (0, "refs/heads/master")
             if head:
                 self._write("@%s HEAD" % head[1])
             else:
@@ -388,7 +417,13 @@ class Helper(object):
         data = ("%s\n" % new_sha).encode("utf8")
         try:
             self._connection.files_upload(path)
-            self._connection.save_meta()
+            cid = self._connection.save_meta()
+
+            # after changing meta locally update the nameservice.
+            f = open(self._remote_path, "w")
+            f.write(cid)
+            f.close()
+
         except Exception as e:
             print(e)
             return "fetch first"
@@ -404,15 +439,19 @@ class Helper(object):
         loc = posixpath.join(self._path, "refs")
         paths  = self._connection.files_list_folder(loc)
         paths = [i.lower() for i in paths]
+
         if not paths:
             return []
+
         revs, data = zip(*self._get_files_ref(paths))
+
         refs = []
         for path, rev, data in zip(paths, revs, data):
             name = self._ref_name_from_path(path)
             sha = data.strip()
             self._refs[name] = (rev, sha)
             refs.append((sha, name))
+        
         return refs
 
     def write_symbolic_ref(self, path, ref, rev=None):
@@ -429,7 +468,13 @@ class Helper(object):
         self._trace("writing symbolic ref %s" % (path))
         try:
             self._connection.files_upload(path)
-            self._connection.save_meta()
+            cid = self._connection.save_meta()
+
+            # after changing meta locally update the nameservice.
+            f = open(self._remote_path, "w")
+            f.write(cid)
+            f.close()
+
             return True
         except Exception as e:
             return False
