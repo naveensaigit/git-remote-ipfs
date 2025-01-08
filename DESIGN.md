@@ -1,10 +1,10 @@
 # Design
 
 Many things are designed the way they are in order to have the same semantics
-and guarantees as a regular Git remote *without running any special code on the
-server side*.
+and guarantees as a regular Git remote _without running any special code on the
+server side_.
 
-git-remote-dropbox is a [Git remote helper][gitremote-helper].
+git-remote-ipfs is a [Git remote helper][gitremote-helper].
 
 To support all Git operations, we need to support one capability for pushing
 and one capability for fetching. For our use case, the best way to do this is
@@ -13,7 +13,7 @@ suited for interacting with foreign version control systems.
 
 ## Repository Layout
 
-We store repository data on Dropbox in a similar way to how Git stores data on
+We store repository data on IPFS in a similar way to how Git stores data on
 disk. In particular, we store [references][git-references] and [loose
 objects][git-objects], which make up all information that needs to be stored on
 the server. The repository folder layout looks almost identical to a bare Git
@@ -46,7 +46,7 @@ The files may not actually be identical on disk due to differences in DEFLATE
 compression, but in fact, if the files are copied as-is into a local Git
 repository, Git will recognize the files as valid.
 
-git-remote-dropbox stores all objects as loose objects - it does not pack
+git-remote-ipfs stores all objects as loose objects - it does not pack
 objects. This means that we do not perform delta compression. In addition, we
 do not perform garbage collection of dangling objects.
 
@@ -81,7 +81,7 @@ performing a fast-forward, and then we perform a compare-and-swap operation. If
 there are any concurrent changes, we require the user to fetch before
 continuing, maintaining safety.
 
-We can perform a compare-and-swap operation in Dropbox by using the "update"
+We can perform a compare-and-swap operation in IPFS by using the "update"
 write mode with a specific revision number.
 
 If we're doing a force push, the process is simpler - we can just overwrite the
